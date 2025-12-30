@@ -2,9 +2,7 @@
 #define UTILS_H
 
 #include <stdint.h>
-#include "types.h"
-
-#define ALLOC_MINBITS 3
+#include "alloc_defs.h"
 
 /* Utility functions */
 void panic(const char *msg);

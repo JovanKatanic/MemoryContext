@@ -125,7 +125,7 @@ static MemBlock *initBlock(uint32 capacity)
     return block;
 }
 
-static Block alloc(MemoryContext *ctx, uint32)
+static Block alloc(MemoryContext *ctx, uint32 unused_size __attribute__((unused)))
 {
     MemorySlabContext *context = (MemorySlabContext *)ctx;
 

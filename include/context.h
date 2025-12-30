@@ -2,15 +2,7 @@
 #define CONTEXT_H
 
 #include <stdint.h>
-#include "types.h"
-
-#define ALLOC_MINBITS 3
-
-#define INITIAL_CAPACITY 4096 // should be power of 2
-
-#define MAXIMUM_ALIGNOF 8
-#define MAXALIGN(LEN) \
-    (((uintptr_t)(LEN) + (MAXIMUM_ALIGNOF - 1)) & ~((uintptr_t)(MAXIMUM_ALIGNOF - 1)))
+#include "alloc_defs.h"
 
 typedef struct MemoryContext MemoryContext;
 
@@ -26,7 +18,7 @@ typedef struct Block
 typedef struct MemoryContextMethods
 {
     Block (*alloc)(MemoryContext *, uint32);
-    void (*jfree)(MemoryContext *ctx, Block block);
+    void (*jfree)(MemoryContext *, Block);
     void (*delete)(MemoryContext *);
 } MemoryContextMethods;
 
