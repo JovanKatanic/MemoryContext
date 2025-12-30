@@ -50,6 +50,9 @@ run: $(TARGET)
 debug:
 	$(MAKE) DEBUG=1
 
+test:
+	$(MAKE) -C tests
+
 # Clean build artifacts
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)

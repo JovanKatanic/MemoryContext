@@ -8,38 +8,38 @@ MemoryContext *createSetContext(char *name)
     Block ptr1 = Alloc(100);
     Block ptr2 = Alloc(2000);
 
-    printf("ptr2: %ld\n", ptr2.data - ptr1.data);
+    printf("ptr2: %ld\n", (uint8_t *)ptr2.data - (uint8_t *)ptr1.data);
 
     Block ptr3 = Alloc(3000);
     Block ptr4 = Alloc(1000);
-    printf("ptr4: %ld\n", ptr4.data - ptr3.data);
+    printf("ptr4: %ld\n", (uint8_t *)ptr4.data - (uint8_t *)ptr3.data);
 
     Free(ptr3);
     Block ptr5 = Alloc(3000);
-    printf("ptr6: %ld\n", ptr5.data - ptr3.data);
+    printf("ptr6: %ld\n", (uint8_t *)ptr5.data - (uint8_t *)ptr3.data);
 
     return context;
 }
 
-MemoryContext *createSlabContext(char *name)
-{
-    // printf("new context \n");
-    // MemoryContext *context = CreateSetAllocContext(name);
-    // Block ptr1 = Alloc(100);
-    // Block ptr2 = Alloc(2000);
+// MemoryContext *createSlabContext(char *name)
+// {
+//     printf("new context \n");
+//     MemoryContext *context = CreateSetAllocContext(name);
+//     Block ptr1 = Alloc(100);
+//     Block ptr2 = Alloc(2000);
 
-    // Block start = context->last->curr;
-    // printf("ptr1: %ld\n", ptr1 - start);
-    // printf("ptr2: %ld\n", ptr2 - start);
+//     Block start = context->last->curr;
+//     printf("ptr1: %ld\n", ptr1 - start);
+//     printf("ptr2: %ld\n", ptr2 - start);
 
-    // Block ptr3 = Alloc(2000);
-    // Block ptr4 = Alloc(2000);
-    // Block start2 = context->last->curr;
-    // printf("ptr3: %ld\n", ptr3 - start2);
-    // printf("ptr4: %ld\n", ptr4 - start2);
+//     Block ptr3 = Alloc(2000);
+//     Block ptr4 = Alloc(2000);
+//     Block start2 = context->last->curr;
+//     printf("ptr3: %ld\n", ptr3 - start2);
+//     printf("ptr4: %ld\n", ptr4 - start2);
 
-    // return context;
-}
+//     return context;
+// }
 
 int main(void)
 {

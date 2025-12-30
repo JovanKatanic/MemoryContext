@@ -2,16 +2,17 @@
 #define CONTEXT_H
 
 #include <stdint.h>
-
-typedef uint32_t uint32;
-typedef uint8_t uint8;
+#include "types.h"
 
 typedef struct MemoryContext MemoryContext;
 
+// .
+// Block should never be created or edited outside of this block
+// .
 typedef struct Block
 {
     void *data;
-    uint32 size;
+    uint32 capacity;
 } Block;
 
 typedef struct MemoryContextMethods
@@ -40,6 +41,6 @@ void Delete();
 void SwitchTo(MemoryContext *context);
 
 /* Utility functions */
-void panic(const char *msg);
+void UnlinkFromParent(MemoryContext *context);
 
-#endif /* MEMORY_H */
+#endif /* CONTEXT_H */

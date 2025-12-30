@@ -1,15 +1,11 @@
+#include "utils.h"
 #include "context.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 #define ALLOCSET_NUM_FREELISTS 11
-#define ALLOC_MINBITS 3
 
-#define MAXIMUM_ALIGNOF 8
-#define MAXALIGN(LEN) \
-    (((uintptr_t)(LEN) + (MAXIMUM_ALIGNOF - 1)) & ~((uintptr_t)(MAXIMUM_ALIGNOF - 1)))
-
-static const uint32 INITIAL_CAPACITY = 4096; // should be power of 2
+#define INITIAL_CAPACITY 4096 // should be power of 2
 
 typedef struct MemBlock
 {
@@ -43,34 +39,9 @@ static MemoryContextMethods AllocSetMethods = {
     .delete = delete,
 };
 
-static void del(MemoryContext *ctx);
-void unlinkFromParent(MemoryContext *context);
-
-void unlinkFromParent(MemoryContext *context)
-{
-    MemoryContext *parent = context->parent;
-
-    if (parent == NULL)
-        return;
-
-    MemoryContext **prev = &parent->children;
-    while (*prev && *prev != context)
-    {
-        prev = &(*prev)->next;
-    }
-
-    if (*prev == context)
-    {
-        *prev = context->next;
-    }
-
-    context->parent = NULL;
-    context->next = NULL;
-}
-
 MemoryContext *CreateSetAllocContext(char *name)
 {
-    uint32 block_header = MAXALIGN(sizeof(MemBlock)); // TODO padded(ALIGNUP)
+    uint32 block_header = MAXALIGN(sizeof(MemBlock));
     uint32 context_header = MAXALIGN(sizeof(MemorySetContext));
     uint32 tot_capacity = block_header + context_header + INITIAL_CAPACITY;
 
@@ -110,11 +81,13 @@ MemoryContext *CreateSetAllocContext(char *name)
     // Change parent state so it contains this node as child
     // for later removal when free is called
 
+    MemoryContext *ctx = (MemoryContext *)context;
+
     if (CURRENT_CONTEXT != NULL)
     {
         if (CURRENT_CONTEXT->children == NULL)
         {
-            CURRENT_CONTEXT->children = (MemoryContext *)context;
+            CURRENT_CONTEXT->children = ctx;
         }
         else
         {
@@ -123,18 +96,18 @@ MemoryContext *CreateSetAllocContext(char *name)
             {
                 curr = curr->next;
             }
-            curr->next = (MemoryContext *)context;
+            curr->next = ctx;
         }
     }
 
-    SwitchTo((MemoryContext *)context);
+    SwitchTo(ctx);
 
-    return (MemoryContext *)context;
+    return ctx;
 }
 
 static MemBlock *initBlock(uint32 capacity)
 {
-    uint32 header = sizeof(MemBlock); // TODO padded(ALIGNUP)
+    uint32 header = MAXALIGN(sizeof(MemBlock));
 
     uint8 *buffer = malloc(header + capacity);
     if (buffer == NULL)
@@ -153,30 +126,6 @@ static MemBlock *initBlock(uint32 capacity)
     return block;
 }
 
-static inline uint8 AllocSetFreeIndex(uint32 size)
-{
-    if (size <= (1 << ALLOC_MINBITS))
-        return 0;
-
-    return 31 - __builtin_clz(size) - ALLOC_MINBITS;
-}
-
-static inline uint32 RoundPow2Up(uint32 size)
-{
-    if (size <= (1 << ALLOC_MINBITS))
-        return (1 << ALLOC_MINBITS);
-
-    return 1 << (32 - __builtin_clz(size - 1));
-}
-
-static inline uint32 RoundPow2Down(uint32 size)
-{
-    if (size <= (1 << ALLOC_MINBITS))
-        return (1 << ALLOC_MINBITS);
-
-    return 1 << (31 - __builtin_clz(size));
-}
-
 static Block alloc(MemoryContext *ctx, uint32 size)
 {
     MemorySetContext *context = (MemorySetContext *)ctx;
@@ -190,18 +139,6 @@ static Block alloc(MemoryContext *ctx, uint32 size)
     {
         if (context->currblock->curr + size > context->currblock->end)
         {
-            // uint32 freeLeft = context->currblock->end - context->currblock->curr;
-            // if (freeLeft >= (1 << ALLOC_MINBITS))
-            // {
-            //     uint8 freeType = AllocSetFreeIndex(freeLeft);
-            //     uint8 *slabLoc = context->currblock->curr;
-            //     MemSlab *freeSlab = (MemSlab *)slabLoc;
-            //     context->currblock->curr += sizeof(MemSlab);
-            //     freeSlab->start = context->currblock->curr;
-            //     freeSlab->next = context->freelist[freeType];
-            //     context->freelist[freeType] = freeSlab;
-            // }
-
             uint32 freeLeft = context->currblock->end - context->currblock->curr;
             if (freeLeft >= (1 << ALLOC_MINBITS))
             {
@@ -230,7 +167,7 @@ static Block alloc(MemoryContext *ctx, uint32 size)
 
     Block result = {
         .data = addr,
-        .size = size};
+        .capacity = size};
 
     return result;
 }
@@ -240,17 +177,8 @@ static void delete(MemoryContext *ctx)
     if (ctx == NULL)
         return;
 
-    unlinkFromParent(ctx);
-    del(ctx);
-}
-
-static void del(MemoryContext *ctx)
-{
-    if (ctx == NULL)
-        return;
-
-    del(ctx->next);
-    del(ctx->children);
+    delete(ctx->next);
+    delete(ctx->children);
 
     MemorySetContext *context = (MemorySetContext *)ctx;
 
@@ -266,8 +194,8 @@ static void del(MemoryContext *ctx)
 static void jfree(MemoryContext *ctx, Block block)
 {
     MemorySetContext *context = (MemorySetContext *)ctx;
-    block.size = RoundPow2Down(block.size);
-    uint8 type = AllocSetFreeIndex(block.size);
+    // block.size = RoundPow2Down(block.size);
+    uint8 type = AllocSetFreeIndex(block.capacity);
 
     MemSlab *slab = (MemSlab *)block.data;
     slab->next = context->freelist[type];
