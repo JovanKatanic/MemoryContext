@@ -1,9 +1,7 @@
-#include "utils.h"
 #include "context.h"
+#include "utils.h"
 #include <stdio.h>
 #include <stdlib.h>
-
-#define ALLOCSET_NUM_FREELISTS 11
 
 typedef struct MemBlock
 {
@@ -19,28 +17,29 @@ typedef struct MemSlab
     struct MemSlab *next;
 } MemSlab;
 
-typedef struct MemorySetContext
+typedef struct MemorySlabContext
 {
     MemoryContext base;
     MemBlock *blocks;
     MemBlock *currblock;
-    MemSlab *freelist[ALLOCSET_NUM_FREELISTS];
-} MemorySetContext;
+    MemSlab *freelist;
+    uint32 slabSize;
+} MemorySlabContext;
 
 static Block alloc(MemoryContext *context, uint32 size);
 static void jfree(MemoryContext *ctx, Block block);
 static void delete(MemoryContext *context);
 
-static MemoryContextMethods AllocSetMethods = {
+static MemoryContextMethods AllocMethods = {
     .alloc = alloc,
     .jfree = jfree,
     .delete = delete,
 };
 
-MemoryContext *CreateSetAllocContext(char *name)
+MemoryContext *CreateSlabAllocContext(char *name, uint32 slabSize)
 {
     uint32 block_header = MAXALIGN(sizeof(MemBlock));
-    uint32 context_header = MAXALIGN(sizeof(MemorySetContext));
+    uint32 context_header = MAXALIGN(sizeof(MemorySlabContext));
     uint32 tot_capacity = block_header + context_header + INITIAL_CAPACITY;
 
     uint8 *buffer = malloc(tot_capacity);
@@ -53,7 +52,7 @@ MemoryContext *CreateSetAllocContext(char *name)
 
     uint8 *context_start = buffer + block_header;
 
-    MemorySetContext *context = (MemorySetContext *)context_start;
+    MemorySlabContext *context = (MemorySlabContext *)context_start;
 
     uint8 *data_start = context_start + context_header;
 
@@ -68,13 +67,15 @@ MemoryContext *CreateSetAllocContext(char *name)
     MemoryContext base = {
         .name = name,
         .parent = CURRENT_CONTEXT,
-        .methods = &AllocSetMethods,
+        .methods = &AllocMethods,
         .children = NULL,
         .next = NULL};
 
     context->base = base;
     context->blocks = block;
     context->currblock = block;
+    context->slabSize = MAXALIGN(slabSize);
+    context->freelist = NULL;
 
     // Change parent state so it contains this node as child
     // for later removal when free is called
@@ -124,31 +125,19 @@ static MemBlock *initBlock(uint32 capacity)
     return block;
 }
 
-static Block alloc(MemoryContext *ctx, uint32 size)
+static Block alloc(MemoryContext *ctx, uint32)
 {
-    MemorySetContext *context = (MemorySetContext *)ctx;
+    MemorySlabContext *context = (MemorySlabContext *)ctx;
 
     void *addr;
-    size = RoundPow2Up(size);
-    uint8 type = AllocSetFreeIndex(size);
-    MemSlab *slab = context->freelist[type];
+    uint32 size = context->slabSize;
+    MemSlab *slab = context->freelist;
 
     if (slab == NULL)
     {
         if (context->currblock->curr + size > context->currblock->end)
         {
-            uint32 freeLeft = context->currblock->end - context->currblock->curr;
-            if (freeLeft >= (1 << ALLOC_MINBITS))
-            {
-                freeLeft = RoundPow2Down(freeLeft);
-                uint8 *slabLoc = context->currblock->curr;
-                MemSlab *freeSlab = (MemSlab *)slabLoc;
-                uint8 freeType = AllocSetFreeIndex(freeLeft);
-                freeSlab->next = context->freelist[freeType];
-                context->freelist[freeType] = freeSlab;
-            }
-
-            uint32 lastCap = context->currblock->capacity << 1;
+            uint32 lastCap = context->currblock->capacity;
             MemBlock *block = initBlock(lastCap);
             context->currblock->next = block;
             context->currblock = block;
@@ -159,13 +148,13 @@ static Block alloc(MemoryContext *ctx, uint32 size)
     }
     else
     {
-        context->freelist[type] = slab->next;
+        context->freelist = slab->next;
         addr = slab;
     }
 
     Block result = {
         .data = addr,
-        .capacity = size};
+        .capacity = context->slabSize};
 
     return result;
 }
@@ -178,7 +167,7 @@ static void delete(MemoryContext *ctx)
     delete(ctx->next);
     delete(ctx->children);
 
-    MemorySetContext *context = (MemorySetContext *)ctx;
+    MemorySlabContext *context = (MemorySlabContext *)ctx;
 
     MemBlock *curr = context->blocks;
     while (curr != NULL)
@@ -191,10 +180,8 @@ static void delete(MemoryContext *ctx)
 
 static void jfree(MemoryContext *ctx, Block block)
 {
-    MemorySetContext *context = (MemorySetContext *)ctx;
-    uint8 type = AllocSetFreeIndex(block.capacity);
-
+    MemorySlabContext *context = (MemorySlabContext *)ctx;
     MemSlab *slab = (MemSlab *)block.data;
-    slab->next = context->freelist[type];
-    context->freelist[type] = slab;
+    slab->next = context->freelist;
+    context->freelist = slab;
 }
